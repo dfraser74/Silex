@@ -90,7 +90,7 @@ silex.view.dialog.PublishDialog = class {
         const provider = hosting['providers'][0];
         console.log('Skip provider selection for hosting:', hosting);
         // continue to next step
-        resolve(this.onSelectProvider(provider));
+        resolve(this.selectProviderFolder(provider));
       }
       else {
         resolve(this.selectProvider(hosting['providers'], providerName));
@@ -114,19 +114,9 @@ silex.view.dialog.PublishDialog = class {
 
       silex.utils.Notification.prompt('Choose the hosting provider you love! &nbsp; ' + helpBtnStr, 'unused', ok => {
         if(ok) {
-          this.model.head.setHostingProvider(selectEl.value);
           const idx = selectEl.selectedIndex;
           const provider = providers[idx];
-          if(provider['skipFolderSelection']) {
-            resolve(this.onSelectProvider(provider));
-          }
-          else {
-            this.view.fileExplorer.openFolder()
-            .then(folder => {
-              this.model.head.setPublicationPath(folder);
-              resolve(this.onSelectProvider(provider));
-            })
-          }
+          resolve(this.selectProviderFolder(provider));
         }
         else resolve(null);
       }, 'next', 'cancel');
@@ -139,6 +129,28 @@ silex.view.dialog.PublishDialog = class {
   `;
       const selectEl = body.querySelector('.providers');
       if(providerName) selectEl.value = providerName;
+    });
+  }
+
+
+  /**
+   * store the selected provider and open a folder selection if needed
+   * @param {Provider} provider
+   * @return {Promise}
+   */
+  selectProviderFolder(provider) {
+    return new Promise((resolve, reject) => {
+      this.model.head.setHostingProvider(provider.name);
+      if(provider['skipFolderSelection']) {
+        resolve(this.onSelectProvider(provider));
+      }
+      else {
+        this.view.fileExplorer.openFolder()
+        .then(folder => {
+          this.model.head.setPublicationPath(folder);
+          resolve(this.onSelectProvider(provider));
+        })
+      }
     });
   }
 
@@ -173,21 +185,21 @@ silex.view.dialog.PublishDialog = class {
   selectVhost(provider) {
     return new Promise((resolve, reject) => {
       this.loading(true);
-      if(provider['skipVhostSelection'] === true) {
-        console.log('Skip vhost selection for provider:', provider);
-        resolve({});
-      }
-      else {
-        this.service.vhosts(provider, vhosts => {
-          this.loading(false);
-          if(vhosts.length === 0) {
-            silex.utils.Notification.alert(`Please click here to
-              <a href="${ provider['dashboardUrl'] }" target="_blank">
-                ${ provider['pleaseCreateAVhost'] }
-              </a>
-            `, () => {
-              resolve(this.selectVhost(provider));
-            }, 'Check again');
+      this.service.vhosts(provider, vhosts => {
+        this.loading(false);
+        if(vhosts.length === 0) {
+          silex.utils.Notification.alert(`Please click here to
+            <a href="${ provider['dashboardUrl'] }" target="_blank">
+              ${ provider['pleaseCreateAVhost'] }
+            </a>
+          `, () => {
+            resolve(this.selectVhost(provider));
+          }, 'Check again');
+        }
+        else {
+          if(provider['skipVhostSelection'] === true) {
+            console.log('Skip vhost selection for provider:', provider, vhosts[0]);
+            resolve(this.selectDomain(provider, vhosts[0]));
           }
           else {
             silex.utils.Notification.prompt('Choose the website you are working on', 'unused', ok => {
@@ -199,17 +211,17 @@ silex.view.dialog.PublishDialog = class {
             }, 'next', 'cancel');
             const body = silex.utils.Notification.getFormBody();
             body.innerHTML = `
-          <select class="vhosts">
-            ${ vhosts.map(v => `<option value="${ v.name }">${ v.name }</option>`) }
-          </select>
-          <br />
-        `;
+              <select class="vhosts">
+                ${ vhosts.map(v => `<option value="${ v.name }">${ v.name }</option>`) }
+              </select>
+              <br />
+            `;
             const selectEl = body.querySelector('.vhosts');
             const publicationPath = this.model.head.getPublicationPath();
             if(publicationPath) selectEl.value = publicationPath.folder;
           }
-        }, msg => reject(msg));
-      }
+        }
+      }, msg => reject(msg));
     });
   }
 
